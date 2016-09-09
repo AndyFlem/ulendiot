@@ -1,0 +1,506 @@
+//////////////////////////////////////////
+//Pump comtroller
+//////////////////////////////////////////
+#define V1CAL 267.2
+
+#define I1CAL 15.4//14.4 // calculated value is 100A:0.05A for transformer / 18 Ohms for resistor = 111.1
+
+#define I1LEAD -5 // number of microseconds the CT1 input leads the voltage input by
+#define POWERCORRECTION 0 // this value, in watts, may be used to compensate for the leakage from voltage to current inputs
+
+// other system constants
+#define SUPPLY_VOLTS 5.0 // used here because it's more accurate than the internal band-gap reference
+#define SUPPLY_FREQUENCY 50
+#define NUMSAMPLES 90 // number of times to sample each 50Hz cycle
+
+#define FILTERSHIFT 13 // for low pass filters to determine ADC offsets
+#define PLLTIMERRANGE 250 //100 // PLL timer range limit ~+/-0.5Hz
+#define PLLLOCKRANGE 40 // allowable ADC range to enter locked state
+#define PLLUNLOCKRANGE 80 // allowable ADC range to remain locked
+#define PLLLOCKCOUNT 100 // number of cycles to determine if PLL is locked
+#define LOOPTIME 1000 // time of outer loop in milliseconds, also time between radio transmissions
+
+//--------------------------------------------------------------------------------------------------
+// constants calculated at compile time
+#define V1_RATIO ((V1CAL * SUPPLY_VOLTS)/1024)
+
+#define I1_RATIO ((I1CAL * SUPPLY_VOLTS)/1024)
+
+#define I1PHASESHIFT (((I1LEAD+36)*256)/400) // phase shift in voltage to align to current samples
+
+#define FILTERROUNDING (1<<(FILTERSHIFT-1))
+#define TIMERTOP (((20000/NUMSAMPLES)*16)-1) // terminal count for PLL timer
+#define PLLTIMERMAX (TIMERTOP+PLLTIMERRANGE)
+#define PLLTIMERMIN (TIMERTOP-PLLTIMERRANGE)
+
+//ANALOG PINS
+#define VOLTS1PIN 0
+#define CT1PIN 2
+
+//DIGITAL PIINS
+#define ACTIVITYPIN 2
+#define PINLOCK 4
+
+#define CONTACTOR_NO 6
+#define CONTACTOR_NC 7
+#define SENSE 10
+#define EXTERNAL_FAULT 9
+
+int pump_state=0; //0=unknown, 1=off, 2=on pending, 3=off pending, 4=on manual, 5=on soft 
+boolean fault=false;
+long pump_wait_interval=750; //time relays are held open or closed for contactor to latch
+unsigned long pump_wait;
+
+boolean activity;
+int sampleV1;
+int sampleI1;
+int numSamples;
+
+int volts1Offset=512;
+int I1Offset=512;
+
+float V1rms;
+float I1rms;
+long sumV1squared;
+long sumI1squared;
+long sumP1;
+
+long cycleV1squared;
+long cycleI1squared;
+long cycleP1;
+long totalV1squared;
+long totalI1squared;
+long totalP1;
+long sumTimerCount;
+
+float realPower1,apparentPower1,powerFactor1;
+long energy1;
+
+float frequency;
+word timerCount=TIMERTOP;
+word pllUnlocked=PLLLOCKCOUNT;
+word cycleCount;
+boolean newCycle;
+unsigned long nextTransmitTime;
+
+int sense=HIGH;
+int reading;
+int debounce_count=0;
+int debounce_trigger=15;
+long debounce_time=0;
+
+long onTime=0;
+unsigned long pumpOffTime=0;
+unsigned long pumpCountdownMins=0;
+
+void setup()
+{
+  delay(200); 
+
+  Serial.begin(19200);
+
+  pinMode(CONTACTOR_NO,OUTPUT);
+  pinMode(CONTACTOR_NC,OUTPUT);
+
+  pinMode(SENSE,INPUT_PULLUP);
+
+  pinMode(PINLOCK,OUTPUT);
+  pinMode(EXTERNAL_FAULT,INPUT);
+  pinMode(ACTIVITYPIN,OUTPUT);
+
+  // change ADC prescaler to /64 = 250kHz clock
+  // slightly out of spec of 200kHz but should be OK
+  const unsigned char PS_32=(1<<ADPS2)|(1<<ADPS0);
+  const unsigned char PS_64=(1<<ADPS2)|(1<<ADPS1);
+  const unsigned char PS_128=(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
+  //ADCSRA &= 0xf8;  // remove bits set by Arduino library
+  //ADCSRA |= 0x06; 
+  ADCSRA &= ~PS_128;
+  ADCSRA |= PS_64;
+
+  //set timer 1 interrupt for required period
+  noInterrupts();
+  TCCR1A = 0; // clear control registers
+  TCCR1B = 0;
+  TCNT1  = 0; // clear counter
+  OCR1A = TIMERTOP; // set compare reg for timer period
+  bitSet(TCCR1B,WGM12); // CTC mode
+  bitSet(TCCR1B,CS10); // no prescaling
+  bitSet(TIMSK1,OCIE1A); // enable timer 1 compare interrupt
+  bitSet(ADCSRA,ADIE); // enable ADC interrupt
+  
+  delay(1500);  
+
+  if (digitalRead(SENSE)==LOW)
+  {
+    Serial.println("CON_MSG,START_ON");
+    pump_state=4; //assume manual on
+    onTime=millis();
+    sense=LOW;
+  } 
+  else {
+    Serial.println("CON_MSG,START_OFF");
+    pump_state=1; //off
+    sense=HIGH;
+  }
+
+  interrupts();  
+}
+
+void loop()
+{
+  if(newCycle) addCycle(); // a new mains cycle has been sampled
+
+  if((millis()>=nextTransmitTime) && ((millis()-nextTransmitTime)<0x80000000L)) // check for overflow
+  {
+    calculateVIPF();
+    sendResults();
+    nextTransmitTime+=LOOPTIME;
+  }
+
+  if(pumpOffTime!=0 && millis()>=pumpOffTime && pump_state>=4) {
+     pump_state=3; //off pending
+     pump_wait=millis()+pump_wait_interval;
+     digitalWrite(CONTACTOR_NC,HIGH);
+     Serial.println("CON_MSG,OFF_TIMER");            
+  }
+
+  //PUMP STATE
+  if (I1rms>1.0) {
+    sense=LOW;
+  } else
+  {
+     sense=HIGH; 
+  }
+/*
+  if (millis()!=debounce_time) {
+    reading=digitalRead(SENSE);
+    if (reading==sense && debounce_count>0){
+      debounce_count--;
+    }
+    if (reading!=sense){
+      debounce_count++;
+    }
+    if (debounce_count>=debounce_trigger)
+    {
+      debounce_count=0;
+      sense=reading;
+      Serial.println("CON_MSG,SENSE_CHANGE");            
+    }
+    debounce_time=millis();
+  }
+*/
+  if (pump_state==5 || pump_state==4)
+  {
+    if (sense==HIGH)
+    {
+      pump_state=1; // off
+      Serial.println("CON_MSG,MANUAL_OR_TRIP_OFF");       
+    } 
+  }  
+
+  if (pump_state==1) //off
+  {
+    if (sense==LOW)
+    {
+      pump_state=4; // manual on
+      onTime=millis();
+      Serial.println("CON_MSG,MANUAL_ON");
+    } 
+  }
+  
+  if (digitalRead(EXTERNAL_FAULT)==HIGH && (pump_state==2 || pump_state==4 || pump_state==5))
+  {
+    
+    digitalWrite(CONTACTOR_NO,LOW);
+    digitalWrite(CONTACTOR_NC,HIGH);
+    delay(pump_wait_interval);    
+    digitalWrite(CONTACTOR_NC,LOW);
+    pump_state=1; //off
+    sense=HIGH;
+    Serial.println("CON_MSG,EXTERNAL_FAULT_OFF");
+  }
+
+  if (pump_state==2 || pump_state==3) 
+  { //on or off pending
+    if (millis()>=pump_wait)
+    {
+      if (pump_state==2) //on pending
+      {
+        if (sense==LOW) 
+        {
+          pump_state=5; //soft on
+          onTime=millis();
+          Serial.println("CON_MSG,SOFT_ON");
+        } 
+        else {
+          pump_state=1; //off
+          Serial.println("CON_MSG,SOFT_ON_FAILED");
+        }
+        digitalWrite(CONTACTOR_NO,LOW);
+      }
+
+      if (pump_state==3) //off pending
+      {
+        if (sense==HIGH) 
+        {
+          pump_state=1; //off
+          Serial.println("CON_MSG,SOFT_OFF");
+        } 
+        else {
+          pump_state=1; //off ####ouch
+          Serial.println("CON_MSG,SOFT_OFF_FAILED");
+        }
+        digitalWrite(CONTACTOR_NC,LOW);
+      }
+    }
+  }
+
+  //COMMANDS
+  int i=0;
+  char commandBuffer[20];
+  String cmd;
+  char* sep;
+  
+  if (Serial.available()){
+    delay(25);
+    while(Serial.available() && i<19) {
+      commandBuffer[i++] = Serial.read();
+    }
+    commandBuffer[i++]='\0';
+  }
+  if (i>0) {
+    //look for a command and argument
+    sep=strchr(commandBuffer,':');
+    if (sep!=0) {
+      *sep=0;
+      ++sep;
+      pumpCountdownMins=atol(sep);
+    } else
+    {
+      pumpCountdownMins=0;
+    }
+    
+    if (strcmp(commandBuffer,"PUMP_ON")==0 && pump_state==1) {
+        if (digitalRead(EXTERNAL_FAULT)==HIGH) {
+          Serial.println("CON_MSG,ON_REFUSED_FAULT");
+        } else
+        {
+          pump_state=2; //on pending
+          pump_wait=millis()+pump_wait_interval;
+          if (pumpCountdownMins>0)
+          {
+            pumpOffTime=millis()+(pumpCountdownMins*60*1000);
+          } else
+          {
+            pumpOffTime=0;
+          }
+          digitalWrite(CONTACTOR_NO,HIGH);
+          Serial.println("CON_MSG,ON_CMD");
+          Serial.println(pumpOffTime);          
+        }      
+    }
+    if (strcmp(commandBuffer,"PUMP_OFF")==0 && pump_state>=4) {
+        pump_state=3; //off pending
+        pump_wait=millis()+pump_wait_interval;
+        digitalWrite(CONTACTOR_NC,HIGH);
+        Serial.println("CON_MSG,OFF_CMD");      
+    }
+  }  
+}
+
+// timer 1 interrupt handler
+ISR(TIMER1_COMPA_vect)
+{
+  ADMUX = _BV(REFS0) | VOLTS1PIN; // start ADC conversion for voltage
+  ADCSRA |= _BV(ADSC);
+}
+
+// ADC interrupt handler
+ISR(ADC_vect)
+{
+  static int newV1;
+  static int newI1;
+  static int lastV1;
+  static long fVolts1Offset=512L<<FILTERSHIFT;
+  static long fI1Offset=512L<<FILTERSHIFT;
+  int result;
+  long phaseShiftedV1;
+
+  result = ADCL;
+  result |= ADCH<<8;
+
+  // determine which conversion just completed
+  switch(ADMUX & 0x0f)
+  {
+  case VOLTS1PIN:
+    ADMUX = _BV(REFS0) | CT1PIN; // start CT1 conversion
+    ADCSRA |= _BV(ADSC);
+    lastV1=newV1;
+    sampleV1 = result;
+    newV1=sampleV1-volts1Offset;
+    sumV1squared+=((long)newV1*newV1);
+    // update low-pass filter for DC offset
+    fVolts1Offset += (sampleV1-volts1Offset); 
+    volts1Offset=(int)((fVolts1Offset+FILTERROUNDING)>>FILTERSHIFT);
+    // determine voltage at current sampling points and use it for power calculation
+    phaseShiftedV1=lastV1+((((long)newV1-lastV1)*I1PHASESHIFT)>>8);
+    sumP1+=(phaseShiftedV1*newI1);
+    break;
+  case CT1PIN:
+    sampleI1 = result;
+    newI1=sampleI1-I1Offset;
+    sumI1squared+=((long)newI1*newI1);
+    fI1Offset += (sampleI1-I1Offset);
+    I1Offset=(int)((fI1Offset+FILTERROUNDING)>>FILTERSHIFT);
+    updatePLL(newV1,lastV1);
+    break;
+  }
+  //digitalWrite(SAMPPIN,LOW);
+}
+
+void updatePLL(int newV, int lastV)
+{
+  static byte samples=0;
+  static int oldV;
+  static boolean divertFlag, diverting=false;
+  static int manualCycleCount=-1;
+  boolean rising;
+
+  rising=(newV>lastV); // synchronise to rising zero crossing
+
+  samples++;
+  if(samples>=NUMSAMPLES) // end of one 50Hz cycle
+  { 
+    samples=0;
+    if(rising)
+    {
+      // if we're in the rising part of the 50Hz cycle adjust the final timer count
+      // to move newV towards 0, only adjust if we're moving in the wrong direction
+      if(((newV<0)&&(newV<=oldV))||((newV>0)&&(newV>=oldV))) timerCount-=newV;
+      // limit range of PLL frequency
+      timerCount=constrain(timerCount,PLLTIMERMIN,PLLTIMERMAX);
+      OCR1A=timerCount;
+      if(abs(newV)>PLLUNLOCKRANGE) pllUnlocked=PLLLOCKCOUNT; // we're unlocked
+      else if(pllUnlocked) pllUnlocked--;
+    }
+    else // in the falling part of the cycle, we shouldn't be here
+    {
+      OCR1A=PLLTIMERMAX; // shift out of this region fast
+      pllUnlocked=PLLLOCKCOUNT; // and we can't be locked
+    }
+
+    oldV=newV;
+
+    // save results for outer loop
+    cycleV1squared=sumV1squared;
+    cycleI1squared=sumI1squared;
+    cycleP1=sumP1;
+
+    // and clear accumulators
+    sumV1squared=0;
+    sumI1squared=0;
+    sumP1=0;
+
+    newCycle=true; // flag new cycle to outer loop
+    //if(manualPowerLevel) manualCycleCount++;
+    //else manualCycleCount=-1; // manual power is off
+  }
+}
+
+// add data for new 50Hz cycle to total
+void addCycle()
+{
+  totalV1squared+=cycleV1squared;
+
+  totalI1squared+=cycleI1squared;
+
+  totalP1+=cycleP1;
+
+  numSamples+=NUMSAMPLES;
+  sumTimerCount+=(timerCount+1); // for average frequency calculation
+
+  cycleCount++;
+  newCycle=false;
+}
+
+// calculate voltage, current, power and frequency
+void calculateVIPF()
+{
+  if(numSamples==0) return; // just in case
+
+  V1rms = V1_RATIO * sqrt(((float)totalV1squared)/numSamples); 
+
+  I1rms = I1_RATIO * sqrt(((float)totalI1squared)/numSamples); 
+
+  realPower1 = (V1_RATIO * I1_RATIO * (float)totalP1)/numSamples;
+  if(abs(realPower1)>POWERCORRECTION) realPower1-=POWERCORRECTION;
+  apparentPower1 = V1rms * I1rms;
+  powerFactor1=realPower1 / apparentPower1;
+
+  frequency=((float)cycleCount*16000000)/(((float)sumTimerCount)*NUMSAMPLES);
+
+  energy1=(realPower1*LOOPTIME)/1000; //watt-seconds
+
+  totalV1squared=0;
+  totalI1squared=0;
+  totalP1=0;
+  numSamples=0;
+  cycleCount=0;
+  sumTimerCount=0;
+}
+
+void sendResults()
+{
+  activity=!activity;
+  digitalWrite(ACTIVITYPIN,activity);
+
+  if(pllUnlocked){ 
+    digitalWrite(PINLOCK,LOW);
+    //V1rms=0;I1rms=0;realPower1=0;apparentPower1=0;powerFactor1=0;
+    //frequency=0;
+  }
+  else{
+    digitalWrite(PINLOCK,HIGH);
+  }
+
+  if (I1rms<0.25) {
+    I1rms=0;realPower1=0;apparentPower1=0;powerFactor1=0;energy1=0;
+  }
+
+
+  Serial.print("CON,");  //0
+  Serial.print(V1rms,1); //1
+  Serial.print(",");
+  Serial.print(I1rms);//2
+  Serial.print(",");
+  Serial.print(realPower1,0);//3
+  Serial.print(",");  
+  Serial.print(apparentPower1,0);//4
+  Serial.print(",");  
+  Serial.print(powerFactor1,2);//5
+  Serial.print(",");
+  Serial.print(frequency);//6
+  Serial.print(",");
+  if (pllUnlocked) {
+    Serial.print("U"); //7
+  } else
+  {
+    Serial.print("L"); //7
+  }  
+  Serial.print(",");
+  Serial.print(pump_state); //8
+  Serial.print(",");    
+  Serial.print(energy1); //9
+  Serial.print(",");    
+  if (pump_state==4 or pump_state==5) {
+    Serial.print(millis()-onTime); //10
+  } else {
+      Serial.print("0"); //10
+  }
+  Serial.println();
+  
+}
+
+
+
