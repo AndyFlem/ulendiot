@@ -1,0 +1,843 @@
+[
+  {
+    "id": "d4b39d17.31dfe",
+    "type": "tab",
+    "label": "3Phase"
+  },
+  {
+    "id": "c76bcc29.1b56c",
+    "type": "tab",
+    "label": "Pump"
+  },
+  {
+    "id": "64451c8e.b28184",
+    "type": "serial-port",
+    "z": "d4b39d17.31dfe",
+    "serialport": "/dev/ttyACM0",
+    "serialbaud": "19200",
+    "databits": "8",
+    "parity": "none",
+    "stopbits": "1",
+    "newline": "\\n",
+    "bin": "false",
+    "out": "char",
+    "addchar": false
+  },
+  {
+    "id": "3bf55ee4.61c6b2",
+    "type": "serial-port",
+    "z": "d4b39d17.31dfe",
+    "serialport": "/dev/ttyACM1",
+    "serialbaud": "19200",
+    "databits": "8",
+    "parity": "none",
+    "stopbits": "1",
+    "newline": "\\n",
+    "bin": "false",
+    "out": "char",
+    "addchar": false
+  },
+  {
+    "id": "a282729f.ddbc7",
+    "type": "mqtt-broker",
+    "z": "d4b39d17.31dfe",
+    "broker": "ulendo.com",
+    "port": "1883",
+    "clientid": "redbishop_3phase_1",
+    "usetls": false,
+    "compatmode": true,
+    "keepalive": "60",
+    "cleansession": true,
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": ""
+  },
+  {
+    "id": "ab4bfa6d.9ab4b8",
+    "type": "serial-port",
+    "z": "c76bcc29.1b56c",
+    "serialport": "/dev/ttyACM0",
+    "serialbaud": "19200",
+    "databits": "8",
+    "parity": "none",
+    "stopbits": "1",
+    "newline": "\\n",
+    "bin": "false",
+    "out": "char",
+    "addchar": false
+  },
+  {
+    "id": "f771c77a.dce178",
+    "type": "mqtt-broker",
+    "z": "c76bcc29.1b56c",
+    "broker": "ulendo.com",
+    "port": "1883",
+    "clientid": "redbishop_pump_1",
+    "usetls": false,
+    "compatmode": true,
+    "keepalive": "60",
+    "cleansession": true,
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": ""
+  },
+  {
+    "id": "868aeb3a.db3478",
+    "type": "debug",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 189,
+    "y": 398,
+    "wires": []
+  },
+  {
+    "id": "4e23dcec.b46f14",
+    "type": "serial in",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "serial": "3bf55ee4.61c6b2",
+    "x": 95.75,
+    "y": 334,
+    "wires": [
+      [
+        "a51a5c4f.76858",
+        "868aeb3a.db3478"
+      ]
+    ]
+  },
+  {
+    "id": "a51a5c4f.76858",
+    "type": "function",
+    "z": "d4b39d17.31dfe",
+    "name": "split",
+    "func": "splt=msg.payload.split(',')\nvar count=flow.get('msg_count')||0;\nif (splt[0]=='MON')\n{\n    if (count>=5) {\n        msg.payload={\n            type: splt[0],\n            l1: {\n                v: parseFloat(splt[1]),\n                i: parseFloat(splt[2]),\n                pr: parseFloat(splt[3]),\n                pa: parseFloat(splt[4]),\n                pf: parseFloat(splt[5]),\n                e: parseFloat(splt[6])/1000/(60*60),\n            },\n            l2: {\n                v: parseFloat(splt[7]),\n                i: parseFloat(splt[8]),\n                pr: parseFloat(splt[9]),\n                pa: parseFloat(splt[10]),\n                pf: parseFloat(splt[11]),\n                e: parseFloat(splt[12])/1000/(60*60),\n            },\n            l3: {\n                v: parseFloat(splt[13]),\n                i: parseFloat(splt[14]),\n                pr: parseFloat(splt[15]),\n                pa: parseFloat(splt[16]),\n                pf: parseFloat(splt[17]),\n                e: parseFloat(splt[18])/1000/(60*60),\n            },\n            f: parseFloat(splt[19])\n        }\n        msg.payload.supply={i: msg.payload.l1.i+msg.payload.l2.i+msg.payload.l3.i};\n        msg.payload.supply.pr=msg.payload.l1.pr+msg.payload.l2.pr+msg.payload.l3.pr;\n        msg.payload.supply.pa=msg.payload.l1.pa+msg.payload.l2.pa+msg.payload.l3.pa;\n        msg.payload.supply.e=msg.payload.l1.e+msg.payload.l2.e+msg.payload.l3.e;\n        if (msg.payload.supply.pa>0){\n            msg.payload.supply.pf=msg.payload.supply.pr/msg.payload.supply.pa;\n        }else{\n            msg.payload.supply.pf=0;\n        }\n        if(msg.payload.l1.v<50){msg.payload.l1.v=0;}\n        if(msg.payload.l2.v<50){msg.payload.l2.v=0;}\n        if(msg.payload.l3.v<50){msg.payload.l3.v=0;}\n        node.send(msg);\n    } else {\n        flow.set('msg_count',count+1)      \n    }\n} \nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 300,
+    "y": 335,
+    "wires": [
+      [
+        "b342e880.3c6d18",
+        "21cb8214.28977e",
+        "d4f795e9.56a9d8"
+      ]
+    ]
+  },
+  {
+    "id": "630ce485.ac610c",
+    "type": "mqtt out",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "topic": "/redbishop/3phase/1/monitor",
+    "qos": "1",
+    "retain": "",
+    "broker": "a282729f.ddbc7",
+    "x": 769,
+    "y": 408,
+    "wires": []
+  },
+  {
+    "id": "b342e880.3c6d18",
+    "type": "function",
+    "z": "d4b39d17.31dfe",
+    "name": "Buffer",
+    "func": "var records=context.get('records')||[]\nrecords.push(msg.payload);\nif (records.length==10) {\n    msg.payload=records;\n    records=[];\n    node.send(msg);\n}\ncontext.set('records',records);\nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 367,
+    "y": 431,
+    "wires": [
+      [
+        "bb6682e8.48199",
+        "fab57314.83342"
+      ]
+    ]
+  },
+  {
+    "id": "bb6682e8.48199",
+    "type": "debug",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 416,
+    "y": 491,
+    "wires": []
+  },
+  {
+    "id": "fab57314.83342",
+    "type": "function",
+    "z": "d4b39d17.31dfe",
+    "name": "Average",
+    "func": "var state=flow.get('state_last')||{\"supply\":\"unknown\", l1:\"unknown\",l2:\"unknown\",l3:\"unknown\"}\n\nvar jpath=global.get ('jsonpath');\nobj=JSON.parse(JSON.stringify(msg.payload));\nl1_v=(jpath.query(obj,'$..l1.v'));\nl1_i=(jpath.query(obj,'$..l1.i'));\nl1_pr=(jpath.query(obj,'$..l1.pr'));\nl1_pa=(jpath.query(obj,'$..l1.pa'));\nl1_pf=(jpath.query(obj,'$..l1.pf'));\nl1_e=(jpath.query(obj,'$..l1.e'));\n\nl2_v=(jpath.query(obj,'$..l2.v'));\nl2_i=(jpath.query(obj,'$..l2.i'));\nl2_pr=(jpath.query(obj,'$..l2.pr'));\nl2_pa=(jpath.query(obj,'$..l2.pa'));\nl2_pf=(jpath.query(obj,'$..l2.pf'));\nl2_e=(jpath.query(obj,'$..l2.e'));\n\nl3_v=(jpath.query(obj,'$..l3.v'));\nl3_i=(jpath.query(obj,'$..l3.i'));\nl3_pr=(jpath.query(obj,'$..l3.pr'));\nl3_pa=(jpath.query(obj,'$..l3.pa'));\nl3_pf=(jpath.query(obj,'$..l3.pf'));\nl3_e=(jpath.query(obj,'$..l3.e'));\n\ns_i=(jpath.query(obj,'$..supply.i'));\ns_pr=(jpath.query(obj,'$..supply.pr'));\ns_pa=(jpath.query(obj,'$..supply.pa'));\ns_pf=(jpath.query(obj,'$..supply.pf'));\ns_e=(jpath.query(obj,'$..supply.e'));\n\nf=(jpath.query(obj,'$..f'));\n\nmsg.payload={\n    l1: {\n        v:av_ignorezero(l1_v),\n        i:(l1_i.reduce(function(a, b) { return a + b; })/l1_i.length),\n        pr:(l1_pr.reduce(function(a, b) { return a + b; })/l1_pr.length),\n        pa:(l1_pa.reduce(function(a, b) { return a + b; })/l1_pa.length),\n        pf:av_ignorezero(l1_pf),\n        e:(l1_e.reduce(function(a, b) { return a + b; })),\n    },\n    l2: {\n        v:av_ignorezero(l3_v),\n        i:(l2_i.reduce(function(a, b) { return a + b; })/l2_i.length),\n        pr:(l2_pr.reduce(function(a, b) { return a + b; })/l2_pr.length),\n        pa:(l2_pa.reduce(function(a, b) { return a + b; })/l2_pa.length),\n        pf:av_ignorezero(l2_pf),\n        e:(l2_e.reduce(function(a, b) { return a + b; })),\n    },    \n    l3: {\n        v:av_ignorezero(l3_v),\n        i:(l3_i.reduce(function(a, b) { return a + b; })/l3_i.length),\n        pr:(l3_pr.reduce(function(a, b) { return a + b; })/l3_pr.length),\n        pa:(l3_pa.reduce(function(a, b) { return a + b; })/l3_pa.length),\n        pf:av_ignorezero(l3_pf),\n        e:(l3_e.reduce(function(a, b) { return a + b; })),\n    },\n    supply:{\n        i:(s_i.reduce(function(a, b) { return a + b; })/s_i.length),\n        pr:(s_pr.reduce(function(a, b) { return a + b; })/s_pr.length),\n        pa:(s_pa.reduce(function(a, b) { return a + b; })/s_pa.length),\n        pf:av_ignorezero(s_pf),\n        e:(s_e.reduce(function(a, b) { return a + b; })),\n    },\n    f: (f.reduce(function(a, b) { return a + b; })/f.length),\n    timestamp:(new Date()).valueOf()\n}\nmsg.payload.monitor_text=\"Supply current: \" + msg.payload.supply.i.toFixed(1) + \"A, Power: \" + msg.payload.supply.pr.toFixed(0) + \"W, PF: \" + msg.payload.supply.pf.toFixed(0) + \".\"  \n\n\nreturn msg;\n\n\nfunction av_ignorezero(ar) {\n    var count=0;\n    var sum=ar.reduce(function(a,b){\n        if(b>0){\n            count+=1;\n            return a+b;\n        } else {\n            return a;\n        }\n    },0);\n    var res;\n    if (count===0){res=0;}else{res=sum/count;}\n    return res;\n    \n}",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 540,
+    "y": 408,
+    "wires": [
+      [
+        "be3aab02.e4c278",
+        "630ce485.ac610c"
+      ]
+    ]
+  },
+  {
+    "id": "be3aab02.e4c278",
+    "type": "debug",
+    "z": "d4b39d17.31dfe",
+    "name": "d",
+    "active": false,
+    "console": "false",
+    "complete": "payload",
+    "x": 597,
+    "y": 471,
+    "wires": []
+  },
+  {
+    "id": "21cb8214.28977e",
+    "type": "function",
+    "z": "d4b39d17.31dfe",
+    "name": "State",
+    "func": "var state_last=flow.get('state_last')||{\"supply\":\"unknown\", l1:\"unknown\",l2:\"unknown\",l3:\"unknown\"}\n\n//unknown\n//down\n//fault_lowv\n//fault_highv\n//good\n\nvar stat=JSON.parse(JSON.stringify(state_last));\n\nfunction line_state(v,old_state)\n{\n    \n  \n    vLowTrig=190;\n    vLowClear=195;\n    vHighTrig=255;\n    vHighClear=250;\n    vDown=50;\n    new_state=old_state;\n    \n    if (v<vDown){\n        new_state='down'\n    } else {\n        if(v<vLowTrig){\n            new_state='fault_lowv'\n        }\n        if (v>vHighTrig){\n            new_state='fault_highv'\n        }\n        if(v<vHighClear && v>vLowClear){\n            new_state='good'\n        }\n        \n    }\n    return new_state;\n}\n\n\nstat.l1=line_state(msg.payload.l1.v,stat.l1)\nstat.l2=line_state(msg.payload.l2.v,stat.l2)\nstat.l3=line_state(msg.payload.l3.v,stat.l3)\n\nif (stat.l1=='good' && stat.l2=='good' && stat.l3=='good') {\n    stat.supply='good'\n} else\n{\n    if (stat.l1=='down' && stat.l2=='down' && stat.l3=='down') {\n        stat.supply='down'\n    }else\n    {\n        stat.supply='fault'\n    }\n}\n\nif (JSON.stringify(stat)!==JSON.stringify(state_last)) {\n    msg.payload={};\n    msg.payload.state=stat;\n    msg.payload.state_description='supply ' + stat.supply\n\n    msg.payload.timestamp=(new Date()).valueOf();\n\n    flow.set('state_last',stat);\n    node.send(msg);\n}\nreturn;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 433,
+    "y": 269,
+    "wires": [
+      [
+        "dc074918.d59458",
+        "5a323e2f.015b4"
+      ]
+    ]
+  },
+  {
+    "id": "850d241.c674ad8",
+    "type": "inject",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "topic": "",
+    "payload": "MON,10.5,11.62,2592,2597,1.00,2591,231.3,3.62,837,837,1.00,836,226.2,6.32,1420,1430,0.99,1419,50.14,L,0,0,0,0,0",
+    "payloadType": "str",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "x": 239.66666412353516,
+    "y": 247.88888549804688,
+    "wires": [
+      [
+        "a51a5c4f.76858"
+      ]
+    ]
+  },
+  {
+    "id": "dc074918.d59458",
+    "type": "mqtt out",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "topic": "/redbishop/3phase/1/state",
+    "qos": "1",
+    "retain": "true",
+    "broker": "a282729f.ddbc7",
+    "x": 787.7500152587891,
+    "y": 260.25000381469727,
+    "wires": []
+  },
+  {
+    "id": "5a323e2f.015b4",
+    "type": "debug",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 643,
+    "y": 189,
+    "wires": []
+  },
+  {
+    "id": "4d75dd64.65da84",
+    "type": "serial in",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "serial": "64451c8e.b28184",
+    "x": 75,
+    "y": 227.88888549804688,
+    "wires": [
+      [
+        "44713273.2f464c",
+        "a64cf580.3f9d28"
+      ]
+    ]
+  },
+  {
+    "id": "44713273.2f464c",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 241.78131103515625,
+    "y": 169.65972900390625,
+    "wires": []
+  },
+  {
+    "id": "d4f795e9.56a9d8",
+    "type": "debug",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 465,
+    "y": 339,
+    "wires": []
+  },
+  {
+    "id": "93988df8.82912",
+    "type": "serial out",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "serial": "ab4bfa6d.9ab4b8",
+    "x": 851.8333740234375,
+    "y": 443.8958435058594,
+    "wires": []
+  },
+  {
+    "id": "90f58ea4.38bee",
+    "type": "mqtt in",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/pump/1/command",
+    "qos": "2",
+    "broker": "f771c77a.dce178",
+    "x": 191.57640075683594,
+    "y": 515.8576736450195,
+    "wires": [
+      [
+        "19e402d0.7bafcd"
+      ]
+    ]
+  },
+  {
+    "id": "a64cf580.3f9d28",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "split",
+    "func": "splt=msg.payload.split(',')\nvar count=flow.get('msg_count')||0; //ignore the first five after start\n\nif (splt[0]=='CON')\n{\n    if (count>=5) {\n        msg.payload={\n            v: parseFloat(splt[1]),\n            i: parseFloat(splt[2]),\n            pr: parseFloat(splt[3]),\n            pa: parseFloat(splt[4]),\n            pf: parseFloat(splt[5]),\n            e: parseFloat(splt[6])/1000/(60*60),\n            f: parseFloat(splt[7])\n        }\n        node.send(msg);\n    } else {\n        flow.set('msg_count',count+1)      \n    }\n} \nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 253.39581298828125,
+    "y": 227.88888549804688,
+    "wires": [
+      [
+        "53a1cd4.e423434",
+        "5502a168.3bdb3",
+        "4e75cc0.67e5534",
+        "848b8947.6b2938"
+      ]
+    ]
+  },
+  {
+    "id": "53a1cd4.e423434",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 455.8367614746094,
+    "y": 112.52431106567383,
+    "wires": []
+  },
+  {
+    "id": "4e75cc0.67e5534",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "State",
+    "func": "var state_last=flow.get('state_last')||'unknown';\n\niLowTrig=1.5;\n\nif (msg.payload.i<=iLowTrig) {\n    state='off';\n}\nif (msg.payload.i>iLowTrig) {\n    state='on';\n}\n\nif (state!=state_last) {\n    flow.set('suspend_checks',2);\n    msg.payload={};\n    msg.payload.state=state;\n    msg.payload.state_description=state;\n    msg.payload.timestamp=(new Date()).valueOf();\n\n    flow.set('state_last',state);\n    \n    if(state=='on'){\n        flow.set('last_on_time',new Date());\n    }else\n    {\n        flow.set('last_on_time',null);\n    }\n    \n    node.send(msg);\n}\nreturn;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 480.14581298828125,
+    "y": 235.16665649414062,
+    "wires": [
+      [
+        "fc223e72.4c226",
+        "87bac00.d87624"
+      ]
+    ]
+  },
+  {
+    "id": "5502a168.3bdb3",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "Buffer",
+    "func": "var records=context.get('records')||[]\nrecords.push(msg.payload);\nif (records.length==10) {\n    msg.payload=records;\n    records=[];\n    node.send(msg);\n}\ncontext.set('records',records);\nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 481.1179504394531,
+    "y": 161.0833282470703,
+    "wires": [
+      [
+        "91ea190c.718268"
+      ]
+    ]
+  },
+  {
+    "id": "f0179ec2.40926",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "Event Check",
+    "func": "var suspend_checks=flow.get('suspend_checks')||0\nstate=flow.get('state_last')||'unknown';\nconfig=flow.get('config');\nlast_3phase_state=flow.get('last_3phase_state')||null\n\niLowTrig=1.5;\niHighTrig=5.5;\nPFLow=0.6;\n\nvar msg_event={};\nvar msg_command={};\nvar command=false;\n\nif (suspend_checks>0){ //Dont do checks for short period after command\n    flow.set('suspend_checks',suspend_checks-1)\n}else\n{\n    if(state=='on'){\n     \n        if(last_3phase_state){\n            if(last_3phase_state.supply!='good'){\n             msg_command.payload='PUMP_OFF';\n            msg_event.payload={\"event_type\": \"fault_detected\"};\n            msg_event.payload.event_sub_type=\"supply_fault\";\n            msg_event.payload.event_description=\"supply fault detected\";\n            //msg_event.payload.send_email=false;\n            msg_event.payload.timestamp=new Date();\n            command=true;               \n            }\n        }\n     \n        if((new Date())-flow.get('last_on_time')>config.max_runtime*1000){\n            msg_command.payload='PUMP_OFF';\n            msg_event.payload={\"event_type\": \"fault_detected\"};\n            msg_event.payload.event_sub_type=\"over_max_runtime\";\n            msg_event.payload.event_data=((new Date())-flow.get('last_on_time'))/1000;\n            msg_event.payload.event_description=\"maximum allowed runtime exceeded\";\n            //msg_event.payload.send_email=false;\n            msg_event.payload.timestamp=new Date();\n            command=true;\n        }\n     \n        if (msg.payload.i>=iHighTrig){\n            msg_command.payload='PUMP_OFF';\n            msg_event.payload={\"event_type\": \"fault_detected\"};\n            msg_event.payload.event_sub_type=\"over_current\";\n            msg_event.payload.event_data=msg.payload.i;\n            msg_event.payload.event_description=\"overcurrent (\" + msg.payload.i +\") detected\";\n            //msg_event.payload.send_email=false;\n            msg_event.payload.timestamp=new Date();\n            command=true;\n        }\n        if (msg.payload.pf<=PFLow){\n            msg_command.payload='PUMP_OFF';\n            msg_event.payload={\"event_type\": \"fault_detected\"};\n            msg_event.payload.event_sub_type=\"low_pf\";\n            msg_event.payload.event_data=msg.payload.pf;\n            msg_event.payload.event_description=\"low power factor (\" + msg.payload.pf +\") detected\";\n            //msg_event.payload.send_email=false;\n            msg_event.payload.timestamp=new Date();\n            command=true;\n        }\n        \n        if (command){\n            node.send([msg_event,msg_command]);\n            flow.set('suspend_checks',2);\n        }        \n    }\n}\nreturn;",
+    "outputs": "2",
+    "noerr": 0,
+    "x": 507.8368606567383,
+    "y": 327.5694627761841,
+    "wires": [
+      [
+        "15143319.7af85d",
+        "49144815.c87f38"
+      ],
+      [
+        "93988df8.82912"
+      ]
+    ]
+  },
+  {
+    "id": "15143319.7af85d",
+    "type": "mqtt out",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/pump/1/event",
+    "qos": "",
+    "retain": "",
+    "broker": "f771c77a.dce178",
+    "x": 781.0868682861328,
+    "y": 316.29514026641846,
+    "wires": []
+  },
+  {
+    "id": "fc223e72.4c226",
+    "type": "mqtt out",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/pump/1/state",
+    "qos": "",
+    "retain": "",
+    "broker": "f771c77a.dce178",
+    "x": 770.8264312744141,
+    "y": 249.2986183166504,
+    "wires": []
+  },
+  {
+    "id": "c6955b2.b8156a8",
+    "type": "inject",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "",
+    "payload": "CON,239.0,7,0,0,0.4,0,50.03,L",
+    "payloadType": "str",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "x": 80.33332824707031,
+    "y": 301.40972900390625,
+    "wires": [
+      [
+        "a64cf580.3f9d28"
+      ]
+    ]
+  },
+  {
+    "id": "91ea190c.718268",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "Average",
+    "func": "state=flow.get('state_last')||'unknown';\n\nvar jpath=global.get ('jsonpath');\nobj=JSON.parse(JSON.stringify(msg.payload));\n\n\nv=(jpath.query(obj,'$..v'));\ni=(jpath.query(obj,'$..i'));\npr=(jpath.query(obj,'$..pr'));\npa=(jpath.query(obj,'$..pa'));\npf=(jpath.query(obj,'$..pf'));\ne=(jpath.query(obj,'$..e'));\nf=(jpath.query(obj,'$..f'));\n\nmsg.payload={\n    v:(v.reduce(function(a, b) { return a + b; })/v.length),\n    i:(i.reduce(function(a, b) { return a + b; })/i.length),\n    pr:(pr.reduce(function(a, b) { return a + b; })/pr.length),\n    pa:(pa.reduce(function(a, b) { return a + b; })/pa.length),\n    pf:(pf.reduce(function(a, b) { return a + b; })/pf.length),\n    e:(e.reduce(function(a, b) { return a + b; })),\n    f: (f.reduce(function(a, b) { return a + b; })/f.length),\n    timestamp:(new Date()).valueOf()\n}\n\nmsg.payload.monitor_text=\"Pump current: \" + msg.payload.i.toFixed(1) + \"A, Power: \" + msg.payload.pr.toFixed(0) + \"W, PF: \" + msg.payload.pf.toFixed(2) + \".\"  \n\nif(state!='on'){\n    msg.payload.no_persist=true;\n}\nnode.send(msg);\n\n\nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 683.1180419921875,
+    "y": 125.63888645172119,
+    "wires": [
+      [
+        "a60efbb8.a7e6d8",
+        "c398fd1a.b3028"
+      ]
+    ]
+  },
+  {
+    "id": "a60efbb8.a7e6d8",
+    "type": "mqtt out",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/pump/1/monitor",
+    "qos": "",
+    "retain": "",
+    "broker": "f771c77a.dce178",
+    "x": 908.3056182861328,
+    "y": 123.93403816223145,
+    "wires": []
+  },
+  {
+    "id": "c398fd1a.b3028",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 850.9259605407715,
+    "y": 71.83642292022705,
+    "wires": []
+  },
+  {
+    "id": "92ab9aec.24d758",
+    "type": "inject",
+    "z": "c76bcc29.1b56c",
+    "name": "Per Minute Check",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "repeat": "60",
+    "crontab": "",
+    "once": false,
+    "x": 213.27933502197266,
+    "y": 716.3541946411133,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "19e402d0.7bafcd",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "Process Cmd",
+    "func": "var state=flow.get('state_last')||'unknown';\nvar last_3phase_state=flow.get('last_3phase_state')||null\n\ncmd=JSON.parse(msg.payload);\n\nif (cmd.command=='toggle'){\n    flow.set('suspend_checks',2);\n    if (state=='on'){\n        msg.payload='PUMP_OFF';\n        msg.result='COMMAND';\n        node.send(msg);\n    }\n    if (state=='off'){\n        msg.payload='PUMP_ON';\n        msg.result='COMMAND';\n        \n        if(last_3phase_state){\n            if(last_3phase_state.supply!='good'){\n                msg.payload={\"event_type\": \"command_refused\"};\n                msg.payload.event_sub_type=\"supply_fault\";\n                msg.payload.event_description=\"on command refused due to supply fault\";\n                //msg.payload.send_email=false;\n                msg.payload.timestamp=new Date();\n                msg.result='EVENT';\n                flow.set('suspend_checks',0);\n            }\n        }\n        node.send(msg);\n    }\n}\n\nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 462.32254791259766,
+    "y": 478.0709915161133,
+    "wires": [
+      [
+        "d1aa847f.ff1e38"
+      ]
+    ]
+  },
+  {
+    "id": "87bac00.d87624",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 730.509349822998,
+    "y": 203.9043312072754,
+    "wires": []
+  },
+  {
+    "id": "49144815.c87f38",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 800.0965118408203,
+    "y": 369.7492427825928,
+    "wires": []
+  },
+  {
+    "id": "f5468b5f.d4ec38",
+    "type": "inject",
+    "z": "c76bcc29.1b56c",
+    "name": "Startup",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "x": 160.50549062093103,
+    "y": 820.5208796395195,
+    "wires": [
+      [
+        "e8c7f57f.7e3fd8",
+        "b0a315bd.4a20a8"
+      ]
+    ]
+  },
+  {
+    "id": "e8c7f57f.7e3fd8",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "func": "flow.set('msg_count',0);\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 351.6204672919379,
+    "y": 822.9514351950751,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "8f93e6c0.773a68",
+    "type": "inject",
+    "z": "d4b39d17.31dfe",
+    "name": "Startup",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "x": 137.6620330810547,
+    "y": 578.765380859375,
+    "wires": [
+      [
+        "3f321649.3c467a"
+      ]
+    ]
+  },
+  {
+    "id": "3f321649.3c467a",
+    "type": "function",
+    "z": "d4b39d17.31dfe",
+    "name": "",
+    "func": "flow.set('msg_count',0);\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 328.77700975206164,
+    "y": 581.1959364149305,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "b0a315bd.4a20a8",
+    "type": "http request",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "method": "GET",
+    "ret": "txt",
+    "url": "http://ulendo.com/config?device=redbishop_pump_1",
+    "tls": "",
+    "x": 367.2500686645508,
+    "y": 779.0000123977661,
+    "wires": [
+      [
+        "6f6163aa.63055c",
+        "1b21d10b.1ca8ff"
+      ]
+    ]
+  },
+  {
+    "id": "6f6163aa.63055c",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "Set Config",
+    "func": "flow.set('config',JSON.parse(msg.payload));\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 559.2500686645508,
+    "y": 778.0000123977661,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "1b21d10b.1ca8ff",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": true,
+    "console": "false",
+    "complete": "false",
+    "x": 579.2500686645508,
+    "y": 830.7500143051147,
+    "wires": []
+  },
+  {
+    "id": "3c1043d4.4b5abc",
+    "type": "mqtt in",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/3phase/1/state",
+    "qos": "2",
+    "broker": "f771c77a.dce178",
+    "x": 207.5,
+    "y": 651.2500076293945,
+    "wires": [
+      [
+        "916301a8.d4efe",
+        "a18a5f66.8ff56"
+      ]
+    ]
+  },
+  {
+    "id": "916301a8.d4efe",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "func": "flow.set('last_3phase_state',JSON.parse(msg.payload).state)\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 508.75000762939453,
+    "y": 650.0000076293945,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "a18a5f66.8ff56",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "3phase state",
+    "active": true,
+    "console": "false",
+    "complete": "payload",
+    "x": 505,
+    "y": 690,
+    "wires": []
+  },
+  {
+    "id": "d1aa847f.ff1e38",
+    "type": "switch",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "property": "result",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "COMMAND",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "EVENT",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "outputs": 2,
+    "x": 650.0000076293945,
+    "y": 480.0000066757202,
+    "wires": [
+      [
+        "93988df8.82912"
+      ],
+      [
+        "109ac7c5.dde648"
+      ]
+    ]
+  },
+  {
+    "id": "109ac7c5.dde648",
+    "type": "mqtt out",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "/redbishop/pump/1/event",
+    "qos": "",
+    "retain": "",
+    "broker": "f771c77a.dce178",
+    "x": 898.7500152587891,
+    "y": 542.5000076293945,
+    "wires": []
+  },
+  {
+    "id": "ac6eb1b4.3ec34",
+    "type": "catch",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "scope": [
+      "b0a315bd.4a20a8"
+    ],
+    "x": 730.0000953674316,
+    "y": 777.5000123977661,
+    "wires": [
+      [
+        "6c1a08e0.0456f8",
+        "bb3bfe23.dfd93"
+      ]
+    ]
+  },
+  {
+    "id": "6c1a08e0.0456f8",
+    "type": "function",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "func": "\n\n    config= {\n        \"fault_lockout\" : 1200,\n        \"max_runtime\" : 3600,\n    }\n    \n    flow.set('config',config);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 896.2500610351562,
+    "y": 777.500002861023,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "bb3bfe23.dfd93",
+    "type": "debug",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "false",
+    "x": 920.0000152587891,
+    "y": 816.2500104904175,
+    "wires": []
+  },
+  {
+    "id": "848b8947.6b2938",
+    "type": "delay",
+    "z": "c76bcc29.1b56c",
+    "name": "200ms",
+    "pauseType": "delay",
+    "timeout": "200",
+    "timeoutUnits": "milliseconds",
+    "rate": "1",
+    "rateUnits": "second",
+    "randomFirst": "1",
+    "randomLast": "5",
+    "randomUnits": "seconds",
+    "drop": false,
+    "x": 356,
+    "y": 327,
+    "wires": [
+      [
+        "f0179ec2.40926"
+      ]
+    ]
+  },
+  {
+    "id": "3911a7d4.39f5c8",
+    "type": "inject",
+    "z": "c76bcc29.1b56c",
+    "name": "",
+    "topic": "",
+    "payload": "PUMP_ON",
+    "payloadType": "str",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "x": 560,
+    "y": 420,
+    "wires": [
+      [
+        "93988df8.82912"
+      ]
+    ]
+  }
+]
