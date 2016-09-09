@@ -1,1 +1,360 @@
-[{"type":"tab","id":"1c6405d6.8ef72a","label":"Inverter"},{"type":"tab","id":"9099278f.997888","label":"BMP085"},{"id":"f97fcbc5.e46cc8","type":"mqtt-broker","z":"1c6405d6.8ef72a","broker":"ulendo.com","port":"1883","clientid":"redbishop_inverter_1","usetls":false,"verifyservercert":true,"compatmode":true,"keepalive":"60","cleansession":true,"willTopic":"","willQos":"1","willRetain":"true","willPayload":"","birthTopic":"","birthQos":"1","birthRetain":"true","birthPayload":""},{"id":"c4166cca.3bac1","type":"mqtt-broker","z":"9099278f.997888","broker":"ulendo.com","port":"1883","clientid":"redbishop_temppres_1","usetls":false,"verifyservercert":true,"compatmode":true,"keepalive":"60","cleansession":true,"willTopic":"","willQos":"0","willRetain":null,"willPayload":"","birthTopic":"","birthQos":"0","birthRetain":null,"birthPayload":""},{"id":"5dead17c.525a7","type":"inverter-send","z":"1c6405d6.8ef72a","name":"","x":241.24999618530273,"y":151,"wires":[["6e07e0eb.5c609","9f25ded5.c11a4"]]},{"id":"228e82b8.6593de","type":"inject","z":"1c6405d6.8ef72a","name":"QPIGS","topic":"","payload":"{\"ref\":\"QPIGS\",\"command\":[\"51\",\"50\",\"49\",\"47\",\"53\",\"B7\",\"A9\",\"0D\"]}","payloadType":"json","repeat":"10","crontab":"","once":false,"x":79.24999618530273,"y":121,"wires":[["38c198ea.00b298","5dead17c.525a7"]]},{"id":"efd08aef.08b298","type":"inject","z":"1c6405d6.8ef72a","name":"QMOD","topic":"","payload":"{\"ref\":\"QMOD\",\"command\":[\"51\", \"4D\", \"4F\", \"44\", \"49\", \"C1\",\"0D\"]}","payloadType":"json","repeat":"9","crontab":"","once":true,"x":82.24999618530273,"y":210,"wires":[["5dead17c.525a7"]]},{"id":"84d65630.887a28","type":"mqtt out","z":"1c6405d6.8ef72a","name":"","topic":"/redbishop/inverter/1/monitor","qos":"1","retain":"false","broker":"f97fcbc5.e46cc8","x":825.0358352661133,"y":136.5714454650879,"wires":[]},{"id":"6e07e0eb.5c609","type":"switch","z":"1c6405d6.8ef72a","name":"","property":"payload.ref","propertyType":"msg","rules":[{"t":"eq","v":"QPIGS","vt":"str"},{"t":"eq","v":"QMOD","vt":"str"}],"checkall":"true","outputs":2,"x":415.00000381469727,"y":150.35715293884277,"wires":[["6604c0ce.f766d"],["e4e190bd.f2e39"]]},{"id":"e4e190bd.f2e39","type":"function","z":"1c6405d6.8ef72a","name":"ParseQMOD","func":"//var moment=global.get('moment')\n\nvar resp=msg.payload.response;\nvar stat;\n\nswitch (resp.slice(1,2)) {\n    case \"L\":\n        stat=\"Grid\";\n        break;\n    case \"B\":\n        stat=\"Battery\";\n        break;\n    case \"L\":\n        stat=\"Fault\";\n        break;\n    case \"P\":\n        stat=\"PowerOn\";\n        break;\n    case \"S\":\n        stat=\"Standby\";\n        break;\n    case \"H\":\n        stat=\"Powersaving\";\n        break;\n    default:\n        return;\n}\n\nvar state_last=flow.get('state_last')||'Unknown'\n\nif (stat!=state_last) {\n    msg.payload={};\n    msg.payload.state=stat;\n    msg.payload.state_description='Inverter supply: ' + stat;\n    msg.payload.timestamp=(new Date()).valueOf();\n\n    flow.set('state_last',stat);\n    node.send(msg);\n}\nreturn;","outputs":1,"noerr":0,"x":583.2143020629883,"y":218.57143020629883,"wires":[["eee67c33.5ec22","52be0a03.602f94"]]},{"id":"eee67c33.5ec22","type":"mqtt out","z":"1c6405d6.8ef72a","name":"","topic":"/redbishop/inverter/1/state","qos":"1","retain":"false","broker":"f97fcbc5.e46cc8","x":850.3214263916016,"y":214.92856311798096,"wires":[]},{"id":"52be0a03.602f94","type":"debug","z":"1c6405d6.8ef72a","name":"Debug Event Msgs","active":true,"console":"false","complete":"true","x":810.9642448425293,"y":279.464298248291,"wires":[]},{"id":"6604c0ce.f766d","type":"function","z":"1c6405d6.8ef72a","name":"ParseQPIGS","func":"//var moment=global.get('moment')\nvar resp=msg.payload.response;\nvar parts=resp.slice(1,-5).split(\" \");\n\nvar payload={};\npayload.grid_voltage=parseFloat(parts[0]);\npayload.grid_frequency=parseFloat(parts[1]);\npayload.output_voltage=parseFloat(parts[2]);\npayload.output_frequency=parseFloat(parts[3]);\npayload.apparent_power=parseInt(parts[4]);\npayload.real_power=parseInt(parts[5]);\npayload.load_pct=parseInt(parts[6]);\npayload.bus_voltage=parseInt(parts[7]);\npayload.battery_voltage=parseFloat(parts[8]);\npayload.charge_current=parseInt(parts[9]);\npayload.battery_pct=parseInt(parts[10]);\npayload.heatsink_temp=parseInt(parts[11]);\npayload.timestamp=(new Date()).valueOf();\npayload.energy=payload.real_power*10/(60*60)/1000;\npayload.monitor_text=\"Inverter load: \" + payload.load_pct + \"%, \" + payload.real_power + \"W, Battery: \" +  payload.battery_pct + \"%.\";\n\nmsg.payload=payload;\n\nreturn msg;","outputs":"1","noerr":0,"x":576.428596496582,"y":141.5000057220459,"wires":[["84d65630.887a28","f3b21fe0.6eedf"]]},{"id":"f3b21fe0.6eedf","type":"debug","z":"1c6405d6.8ef72a","name":"Debug Monitor Msgs","active":false,"console":"false","complete":"true","x":797.2873878479004,"y":67.39583969116211,"wires":[]},{"id":"9f25ded5.c11a4","type":"debug","z":"1c6405d6.8ef72a","name":"","active":false,"console":"false","complete":"true","x":407.7222366333008,"y":65.68402290344238,"wires":[]},{"id":"2fb89fa4.18ccd","type":"inject","z":"1c6405d6.8ef72a","name":"Debug Inject Bat","topic":"","payload":"{ \"ref\": \"QMOD\", \"command\": [ 81, 77, 79, 68, 73, 193, 13 ], \"response\": \"(B\\u0006\\u0007\\r\\u0000\\u0000\\u0000\" }","payloadType":"json","repeat":"","crontab":"","once":false,"x":337.81480407714844,"y":245.95372009277344,"wires":[["e4e190bd.f2e39"]]},{"id":"38c198ea.00b298","type":"debug","z":"1c6405d6.8ef72a","name":"","active":false,"console":"false","complete":"true","x":198.7037319607205,"y":68.78086513943143,"wires":[]},{"id":"f62a31b2.5aa2c","type":"bmp085","z":"9099278f.997888","device":"/dev/i2c-1","timer":"10","pressureUnits":"hPa","temperatureUnits":"degC","seaLevel":"QFE","height":0,"heightUnits":"m","name":"","x":264.83680725097656,"y":223.70834350585938,"wires":[["4e139d95.bb4cc4","c97fa4f7.38f288"]]},{"id":"c97fa4f7.38f288","type":"function","z":"9099278f.997888","name":"","func":"msg.payload.timestamp=(new Date()).valueOf();\nmsg.payload.monitor_description=\"Temp: \" + msg.payload.temperature + \"C, Pres: \" + msg.payload.pressure + \"hPa.\";\nreturn msg;","outputs":1,"noerr":0,"x":440.82643127441406,"y":225.51388549804688,"wires":[["73429ee1.4b4e8","47fb2ae9.f400e4"]]},{"id":"47fb2ae9.f400e4","type":"mqtt out","z":"9099278f.997888","name":"","topic":"/redbishop/temppres/1/monitor","qos":"1","retain":"false","broker":"c4166cca.3bac1","x":708.8299102783203,"y":227.45834350585938,"wires":[]},{"id":"4e139d95.bb4cc4","type":"debug","z":"9099278f.997888","name":"","active":false,"console":"false","complete":"true","x":414.83680725097656,"y":157.25,"wires":[]},{"id":"73429ee1.4b4e8","type":"debug","z":"9099278f.997888","name":"","active":true,"console":"false","complete":"true","x":620.8264312744141,"y":153.23959350585938,"wires":[]},{"id":"3915b074.d0e91","type":"inject","z":"1c6405d6.8ef72a","name":"Debug inject Line","topic":"","payload":"{ \"ref\": \"QMOD\", \"command\": [ 81, 77, 79, 68, 73, 193, 13 ], \"response\": \"(L\\u0006\\u0007\\r\\u0000\\u0000\\u0000\" }","payloadType":"json","repeat":"","crontab":"","once":false,"x":333,"y":343,"wires":[["e4e190bd.f2e39"]]}]
+[
+  {
+    "type": "tab",
+    "id": "1c6405d6.8ef72a",
+    "label": "Inverter"
+  },
+  {
+    "type": "tab",
+    "id": "9099278f.997888",
+    "label": "BMP085"
+  },
+  {
+    "id": "f97fcbc5.e46cc8",
+    "type": "mqtt-broker",
+    "z": "1c6405d6.8ef72a",
+    "broker": "ulendo.com",
+    "port": "1883",
+    "clientid": "redbishop_inverter_1",
+    "usetls": false,
+    "verifyservercert": true,
+    "compatmode": true,
+    "keepalive": "60",
+    "cleansession": true,
+    "willTopic": "",
+    "willQos": "1",
+    "willRetain": "true",
+    "willPayload": "",
+    "birthTopic": "",
+    "birthQos": "1",
+    "birthRetain": "true",
+    "birthPayload": ""
+  },
+  {
+    "id": "c4166cca.3bac1",
+    "type": "mqtt-broker",
+    "z": "9099278f.997888",
+    "broker": "ulendo.com",
+    "port": "1883",
+    "clientid": "redbishop_temppres_1",
+    "usetls": false,
+    "verifyservercert": true,
+    "compatmode": true,
+    "keepalive": "60",
+    "cleansession": true,
+    "willTopic": "",
+    "willQos": "0",
+    "willRetain": null,
+    "willPayload": "",
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthRetain": null,
+    "birthPayload": ""
+  },
+  {
+    "id": "5dead17c.525a7",
+    "type": "inverter-send",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "x": 241.24999618530273,
+    "y": 151,
+    "wires": [
+      [
+        "6e07e0eb.5c609",
+        "9f25ded5.c11a4"
+      ]
+    ]
+  },
+  {
+    "id": "228e82b8.6593de",
+    "type": "inject",
+    "z": "1c6405d6.8ef72a",
+    "name": "QPIGS",
+    "topic": "",
+    "payload": "{\"ref\":\"QPIGS\",\"command\":[\"51\",\"50\",\"49\",\"47\",\"53\",\"B7\",\"A9\",\"0D\"]}",
+    "payloadType": "json",
+    "repeat": "10",
+    "crontab": "",
+    "once": false,
+    "x": 79.24999618530273,
+    "y": 121,
+    "wires": [
+      [
+        "38c198ea.00b298",
+        "5dead17c.525a7"
+      ]
+    ]
+  },
+  {
+    "id": "efd08aef.08b298",
+    "type": "inject",
+    "z": "1c6405d6.8ef72a",
+    "name": "QMOD",
+    "topic": "",
+    "payload": "{\"ref\":\"QMOD\",\"command\":[\"51\", \"4D\", \"4F\", \"44\", \"49\", \"C1\",\"0D\"]}",
+    "payloadType": "json",
+    "repeat": "9",
+    "crontab": "",
+    "once": true,
+    "x": 82.24999618530273,
+    "y": 210,
+    "wires": [
+      [
+        "5dead17c.525a7"
+      ]
+    ]
+  },
+  {
+    "id": "84d65630.887a28",
+    "type": "mqtt out",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "topic": "/redbishop/inverter/1/monitor",
+    "qos": "1",
+    "retain": "false",
+    "broker": "f97fcbc5.e46cc8",
+    "x": 825.0358352661133,
+    "y": 136.5714454650879,
+    "wires": []
+  },
+  {
+    "id": "6e07e0eb.5c609",
+    "type": "switch",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "property": "payload.ref",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "QPIGS",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "QMOD",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "outputs": 2,
+    "x": 415.00000381469727,
+    "y": 150.35715293884277,
+    "wires": [
+      [
+        "6604c0ce.f766d"
+      ],
+      [
+        "e4e190bd.f2e39"
+      ]
+    ]
+  },
+  {
+    "id": "e4e190bd.f2e39",
+    "type": "function",
+    "z": "1c6405d6.8ef72a",
+    "name": "ParseQMOD",
+    "func": "//var moment=global.get('moment')\n\nvar resp=msg.payload.response;\nvar stat;\n\nswitch (resp.slice(1,2)) {\n    case \"L\":\n        stat=\"Grid\";\n        break;\n    case \"B\":\n        stat=\"Battery\";\n        break;\n    case \"L\":\n        stat=\"Fault\";\n        break;\n    case \"P\":\n        stat=\"PowerOn\";\n        break;\n    case \"S\":\n        stat=\"Standby\";\n        break;\n    case \"H\":\n        stat=\"Powersaving\";\n        break;\n    default:\n        return;\n}\n\nvar state_last=flow.get('state_last')||'Unknown'\n\nif (stat!=state_last) {\n    msg.payload={};\n    msg.payload.state=stat;\n    msg.payload.state_description='Inverter supply: ' + stat;\n    msg.payload.timestamp=(new Date()).valueOf();\n\n    flow.set('state_last',stat);\n    node.send(msg);\n}\nreturn;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 583.2143020629883,
+    "y": 218.57143020629883,
+    "wires": [
+      [
+        "eee67c33.5ec22",
+        "52be0a03.602f94"
+      ]
+    ]
+  },
+  {
+    "id": "eee67c33.5ec22",
+    "type": "mqtt out",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "topic": "/redbishop/inverter/1/state",
+    "qos": "1",
+    "retain": "false",
+    "broker": "f97fcbc5.e46cc8",
+    "x": 850.3214263916016,
+    "y": 214.92856311798096,
+    "wires": []
+  },
+  {
+    "id": "52be0a03.602f94",
+    "type": "debug",
+    "z": "1c6405d6.8ef72a",
+    "name": "Debug Event Msgs",
+    "active": true,
+    "console": "false",
+    "complete": "true",
+    "x": 810.9642448425293,
+    "y": 279.464298248291,
+    "wires": []
+  },
+  {
+    "id": "6604c0ce.f766d",
+    "type": "function",
+    "z": "1c6405d6.8ef72a",
+    "name": "ParseQPIGS",
+    "func": "//var moment=global.get('moment')\nvar resp=msg.payload.response;\nvar parts=resp.slice(1,-5).split(\" \");\n\nvar payload={};\npayload.grid_voltage=parseFloat(parts[0]);\npayload.grid_frequency=parseFloat(parts[1]);\npayload.output_voltage=parseFloat(parts[2]);\npayload.output_frequency=parseFloat(parts[3]);\npayload.apparent_power=parseInt(parts[4]);\npayload.real_power=parseInt(parts[5]);\npayload.load_pct=parseInt(parts[6]);\npayload.bus_voltage=parseInt(parts[7]);\npayload.battery_voltage=parseFloat(parts[8]);\npayload.charge_current=parseInt(parts[9]);\npayload.battery_pct=parseInt(parts[10]);\npayload.heatsink_temp=parseInt(parts[11]);\npayload.timestamp=(new Date()).valueOf();\npayload.energy=payload.real_power*10/(60*60)/1000;\npayload.monitor_text=\"Inverter load: \" + payload.load_pct + \"%, \" + payload.real_power + \"W, Battery: \" +  payload.battery_pct + \"%.\";\n\nmsg.payload=payload;\n\nreturn msg;",
+    "outputs": "1",
+    "noerr": 0,
+    "x": 576.428596496582,
+    "y": 141.5000057220459,
+    "wires": [
+      [
+        "84d65630.887a28",
+        "f3b21fe0.6eedf"
+      ]
+    ]
+  },
+  {
+    "id": "f3b21fe0.6eedf",
+    "type": "debug",
+    "z": "1c6405d6.8ef72a",
+    "name": "Debug Monitor Msgs",
+    "active": false,
+    "console": "false",
+    "complete": "true",
+    "x": 797.2873878479004,
+    "y": 67.39583969116211,
+    "wires": []
+  },
+  {
+    "id": "9f25ded5.c11a4",
+    "type": "debug",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "true",
+    "x": 407.7222366333008,
+    "y": 65.68402290344238,
+    "wires": []
+  },
+  {
+    "id": "2fb89fa4.18ccd",
+    "type": "inject",
+    "z": "1c6405d6.8ef72a",
+    "name": "Debug Inject Bat",
+    "topic": "",
+    "payload": "{ \"ref\": \"QMOD\", \"command\": [ 81, 77, 79, 68, 73, 193, 13 ], \"response\": \"(B\\u0006\\u0007\\r\\u0000\\u0000\\u0000\" }",
+    "payloadType": "json",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "x": 337.81480407714844,
+    "y": 245.95372009277344,
+    "wires": [
+      [
+        "e4e190bd.f2e39"
+      ]
+    ]
+  },
+  {
+    "id": "38c198ea.00b298",
+    "type": "debug",
+    "z": "1c6405d6.8ef72a",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "true",
+    "x": 198.7037319607205,
+    "y": 68.78086513943143,
+    "wires": []
+  },
+  {
+    "id": "f62a31b2.5aa2c",
+    "type": "bmp085",
+    "z": "9099278f.997888",
+    "device": "/dev/i2c-1",
+    "timer": "10",
+    "pressureUnits": "hPa",
+    "temperatureUnits": "degC",
+    "seaLevel": "QFE",
+    "height": 0,
+    "heightUnits": "m",
+    "name": "",
+    "x": 264.83680725097656,
+    "y": 223.70834350585938,
+    "wires": [
+      [
+        "4e139d95.bb4cc4",
+        "c97fa4f7.38f288"
+      ]
+    ]
+  },
+  {
+    "id": "c97fa4f7.38f288",
+    "type": "function",
+    "z": "9099278f.997888",
+    "name": "",
+    "func": "msg.payload.timestamp=(new Date()).valueOf();\nmsg.payload.monitor_description=\"Temp: \" + msg.payload.temperature + \"C, Pres: \" + msg.payload.pressure + \"hPa.\";\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 440.82643127441406,
+    "y": 225.51388549804688,
+    "wires": [
+      [
+        "73429ee1.4b4e8",
+        "47fb2ae9.f400e4"
+      ]
+    ]
+  },
+  {
+    "id": "47fb2ae9.f400e4",
+    "type": "mqtt out",
+    "z": "9099278f.997888",
+    "name": "",
+    "topic": "/redbishop/temppres/1/monitor",
+    "qos": "1",
+    "retain": "false",
+    "broker": "c4166cca.3bac1",
+    "x": 708.8299102783203,
+    "y": 227.45834350585938,
+    "wires": []
+  },
+  {
+    "id": "4e139d95.bb4cc4",
+    "type": "debug",
+    "z": "9099278f.997888",
+    "name": "",
+    "active": false,
+    "console": "false",
+    "complete": "true",
+    "x": 414.83680725097656,
+    "y": 157.25,
+    "wires": []
+  },
+  {
+    "id": "73429ee1.4b4e8",
+    "type": "debug",
+    "z": "9099278f.997888",
+    "name": "",
+    "active": true,
+    "console": "false",
+    "complete": "true",
+    "x": 620.8264312744141,
+    "y": 153.23959350585938,
+    "wires": []
+  },
+  {
+    "id": "3915b074.d0e91",
+    "type": "inject",
+    "z": "1c6405d6.8ef72a",
+    "name": "Debug inject Line",
+    "topic": "",
+    "payload": "{ \"ref\": \"QMOD\", \"command\": [ 81, 77, 79, 68, 73, 193, 13 ], \"response\": \"(L\\u0006\\u0007\\r\\u0000\\u0000\\u0000\" }",
+    "payloadType": "json",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "x": 333,
+    "y": 343,
+    "wires": [
+      [
+        "e4e190bd.f2e39"
+      ]
+    ]
+  }
+]
